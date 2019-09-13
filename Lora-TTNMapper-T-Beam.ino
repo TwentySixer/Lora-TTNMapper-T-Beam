@@ -11,6 +11,11 @@
 
 // T-Beam specific hardware
 #define BUILTIN_LED 14
+#define BUTTON 39 
+
+unsigned interval[] = {20, 30,40, 10};
+unsigned interval_key = 0;
+int buttonState = 0;
 
 #define OLED_RESET 4 // not used
 Adafruit_SSD1306 display(OLED_RESET);
@@ -33,7 +38,9 @@ void os_getDevKey (u1_t* buf) { }
 
 static osjob_t sendjob;
 // Schedule TX every this many seconds (might become longer due to duty cycle limitations).
-const unsigned TX_INTERVAL = 30;
+//const unsigned TX_INTERVAL = 30;
+
+unsigned TX_INTERVAL = interval[interval_key];
 
 // For battery mesurement
 const uint8_t vbatPin = 35;
@@ -103,7 +110,9 @@ void onEvent (ev_t ev) {
         Serial.println(s);
       }
       // Schedule next transmission
-      os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
+      sprintf(s, "%i Sendeinterval %i " ,os_getTime(), TX_INTERVAL);
+      Serial.println(s);
+      os_setTimedCallback(&sendjob, os_getTime() + sec2osticks((TX_INTERVAL-9)), do_send);
       break;
     case EV_LOST_TSYNC:
       Serial.println(F("EV_LOST_TSYNC"));
@@ -154,6 +163,7 @@ void do_send(osjob_t* j) {
     }
     else
     {
+      Serial.println(F("wait 3 sec"));
       //try again in 3 seconds
       os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(3), do_send);
     }
@@ -162,11 +172,15 @@ void do_send(osjob_t* j) {
 }
 
 void setup() {
+
+  // initialize the button pin as a input:
+  pinMode(BUTTON, INPUT);
+  
   Serial.begin(115200);
   Serial.println(F("TTN Mapper"));
   
   pinMode(vbatPin, INPUT);// Battery mesurement
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C, 0, 22, 21, 800000);
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C, 0, 21, 22, 800000);
   display.clearDisplay();
   // set text color / Textfarbe setzen
   display.setTextColor(WHITE);
@@ -237,10 +251,19 @@ void setup() {
 
 void loop() {
     VBAT = (float)(analogRead(vbatPin)) / 4095*2*3.3*1.1;// Battery Voltage
-    
+
     os_runloop_once();
     if (gps.checkGpsFix())
     { 
+      buttonState = digitalRead(BUTTON);
+      if (buttonState == LOW) {
+          interval_key++;       
+          if(interval_key > (sizeof(interval) / sizeof(interval[0]))-1 ){
+            interval_key = 0;
+          }
+          TX_INTERVAL = interval[interval_key] ;
+     }
+      
     gps.gdisplay(txBuffer2);
     float hdop = txBuffer2[4] / 10.0;
     display.clearDisplay();
@@ -248,14 +271,18 @@ void loop() {
     display.setTextSize(1);
     display.setCursor(0,0);
     display.println("SAT: " + String(txBuffer2[0]));
-    display.setCursor(97,0);
+    display.setCursor(95,0);
     display.println(VBAT);
     display.setCursor(122,0);
     display.println("V");
-    display.setCursor(128,0);
+    display.setCursor(0,10);
     display.println("Speed: " + String(txBuffer2[1]));
     display.setCursor(0,20);
     display.println("Course: " + String(txBuffer2[2]));
+    display.setCursor(108,20);
+    display.println(TX_INTERVAL);
+    display.setCursor(122,20);
+    display.println("s");
     display.setCursor(0,30);
     display.println("Alt: " + String(txBuffer2[3]));
     display.setCursor(0,40);
